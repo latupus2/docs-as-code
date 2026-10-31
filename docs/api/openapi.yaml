@@ -1,0 +1,275 @@
+openapi: 3.0.3
+
+info:
+  title: Movie Recommender API
+  description: API рекомендательной системы фильмов. Позволяет сохранять историю просмотров, оценивать фильмы и получать персональные рекомендации от ИИ-модели.
+  version: 1.0.0
+
+servers:
+  - url: https://example.com/api/v1
+
+paths:
+  /recommendations:
+    post:
+      summary: Получить персональные рекомендации
+      description: Передаёт историю просмотров и оценки пользователя ML-модели и возвращает список фильмов, которые пользователь ещё не смотрел.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: integer
+                  example: 123
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  default: 5
+                  example: 5
+      responses:
+        '200':
+          description: Рекомендации сформированы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResult'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_REQUEST
+                message: userId должно быть положительным целым числом
+        '422':
+          description: Недостаточно данных для рекомендаций (история просмотров пуста)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_ENOUGH_DATA
+                message: Смотрите и оценивайте фильмы, чтобы получать рекомендации
+        '500':
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Модель рекомендаций временно недоступна
+
+  /users/{userId}/viewings:
+    get:
+      summary: Получить историю просмотров пользователя
+      description: Возвращает список фильмов, которые пользователь уже посмотрел, вместе с его оценками.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Идентификатор пользователя
+          schema:
+            type: integer
+            example: 123
+      responses:
+        '200':
+          description: История просмотров получена (список может быть пустым)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Viewing'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: USER_NOT_FOUND
+                message: Пользователь не найден
+
+    post:
+      summary: Добавить фильм в историю просмотров
+      description: Сохраняет факт просмотра фильма. Оценку можно передать сразу или поставить позже.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Идентификатор пользователя
+          schema:
+            type: integer
+            example: 123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - movieId
+              properties:
+                movieId:
+                  type: integer
+                  example: 42
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  example: 5
+      responses:
+        '201':
+          description: Просмотр сохранён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Viewing'
+        '400':
+          description: Некорректные данные (например, оценка вне диапазона 1–10)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_RATING
+                message: Некорректные данные
+        '404':
+          description: Фильм не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: MOVIE_NOT_FOUND
+                message: Фильм не найден
+
+  /viewings/{viewingId}:
+    patch:
+      summary: Изменить оценку просмотренного фильма
+      description: Обновляет оценку у уже сохранённого просмотра.
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          description: Идентификатор просмотра
+          schema:
+            type: integer
+            example: 1001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rating
+              properties:
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  example: 5
+      responses:
+        '200':
+          description: Оценка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Viewing'
+        '400':
+          description: Некорректная оценка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_RATING
+                message: Оценка должна быть в диапазоне от 1 до 10
+        '404':
+          description: Просмотр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: VIEWING_NOT_FOUND
+                message: Просмотр не найден
+
+components:
+  schemas:
+    Movie:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        title:
+          type: string
+          example: Interstellar
+        genre:
+          type: string
+          example: sci-fi
+
+    Viewing:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1001
+        movie:
+          $ref: '#/components/schemas/Movie'
+        watchedAt:
+          type: string
+          format: date
+          example: '2026-10-20'
+        rating:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10
+          example: 5
+
+    Recommendation:
+      type: object
+      properties:
+        movie:
+          $ref: '#/components/schemas/Movie'
+        score:
+          type: number
+          format: float
+          example: 0.91
+        reason:
+          type: string
+          example: Похож на фильмы, которые вы высоко оценили
+
+    RecommendationResult:
+      type: object
+      properties:
+        userId:
+          type: integer
+          example: 123
+        modelVersion:
+          type: string
+          example: '1.0.0'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: INVALID_REQUEST
+        message:
+          type: string
+          example: userId должно быть положительным целым числом
