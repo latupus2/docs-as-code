@@ -2,17 +2,20 @@ openapi: 3.0.3
 
 info:
   title: Movie Recommender API
-  description: API рекомендательной системы фильмов. Позволяет сохранять историю просмотров, оценивать фильмы и получать персональные рекомендации от ИИ-модели.
-  version: 1.0.0
+  description: API рекомендательной системы фильмов. Позволяет сохранять историю просмотров, оценивать фильмы и получать персональные рекомендации от ИИ-модели. Все операции требуют авторизации, пользователь имеет доступ только к своим данным.
+  version: 1.1.0
 
 servers:
   - url: https://example.com/api/v1
+
+security:
+  - BearerAuth: []
 
 paths:
   /recommendations:
     post:
       summary: Получить персональные рекомендации
-      description: Передаёт историю просмотров и оценки пользователя ML-модели и возвращает список фильмов, которые пользователь ещё не смотрел.
+      description: Передаёт историю просмотров и оценки пользователя ML-модели и возвращает список фильмов, которые пользователь ещё не смотрел. Для построения рекомендаций нужно минимум 3 просмотренных фильма с оценкой; просмотры без оценки не учитываются.
       requestBody:
         required: true
         content:
@@ -47,15 +50,19 @@ paths:
               example:
                 code: INVALID_REQUEST
                 message: userId должно быть положительным целым числом
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Недостаточно данных для рекомендаций (история просмотров пуста)
+          description: Недостаточно данных для рекомендаций (меньше 3 просмотренных фильмов с оценкой)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
                 code: NOT_ENOUGH_DATA
-                message: Смотрите и оценивайте фильмы, чтобы получать рекомендации
+                message: Оцените как минимум 3 просмотренных фильма, чтобы получить рекомендации
         '500':
           description: Внутренняя ошибка сервиса
           content:
@@ -87,6 +94,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Viewing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: Пользователь не найден
           content:
@@ -99,7 +110,7 @@ paths:
 
     post:
       summary: Добавить фильм в историю просмотров
-      description: Сохраняет факт просмотра фильма. Оценку можно передать сразу или поставить позже.
+      description: Сохраняет факт просмотра фильма. Один фильм можно добавить в историю только один раз; при повторной попытке возвращается ошибка 409, а оценку нужно менять через PATCH /viewings/{viewingId}. Оценку можно передать сразу или поставить позже.
       parameters:
         - name: userId
           in: path
@@ -141,6 +152,10 @@ paths:
               example:
                 code: INVALID_RATING
                 message: Некорректные данные
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: Фильм не найден
           content:
@@ -150,6 +165,15 @@ paths:
               example:
                 code: MOVIE_NOT_FOUND
                 message: Фильм не найден
+        '409':
+          description: Фильм уже есть в истории просмотров пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: VIEWING_ALREADY_EXISTS
+                message: Фильм уже есть в истории просмотров пользователя
 
   /viewings/{viewingId}:
     patch:
@@ -193,6 +217,10 @@ paths:
               example:
                 code: INVALID_RATING
                 message: Оценка должна быть в диапазоне от 1 до 10
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: Просмотр не найден
           content:
@@ -204,6 +232,33 @@ paths:
                 message: Просмотр не найден
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Токен, выданный пользователю после входа в аккаунт.
+
+  responses:
+    Unauthorized:
+      description: Пользователь не авторизован (токен отсутствует или недействителен)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: UNAUTHORIZED
+            message: Токен аутентификации отсутствует или недействителен
+    Forbidden:
+      description: Нет доступа к данным другого пользователя.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: FORBIDDEN
+            message: Вы можете получить доступ только к своим собственным данным
+
   schemas:
     Movie:
       type: object
